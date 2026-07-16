@@ -6,7 +6,7 @@ import AppShell from "../components/AppShell";
 import Card from "../components/Card";
 import { Badge } from "../components/Badge";
 import ConfirmDialog from "../components/ConfirmDialog";
-import LoadingScreen from "../components/LoadingScreen";
+import { Bone, SkeletonTable } from "../components/Skeleton";
 
 const emptyForm = { name: "", category: "", price: "", cost_price: "", stock_quantity: "", reorder_point: "10" };
 
@@ -105,12 +105,21 @@ export default function Products() {
     }
   }
 
-  if (loading) {
-    return <LoadingScreen label="Loading products..." />;
-  }
-
   return (
     <AppShell title="Products" subtitle="Manage prices, stock, and reorder points">
+      {loading ? (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-gray-150 shadow-card p-6">
+            <Bone className="h-4 w-24 mb-5" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Bone key={i} className="h-9" />
+              ))}
+            </div>
+          </div>
+          <SkeletonTable rows={8} cols={6} />
+        </div>
+      ) : (
       <div className="space-y-6">
         {error && (
           <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>
@@ -328,6 +337,7 @@ export default function Products() {
           )}
         </Card>
       </div>
+      )}
 
       <ConfirmDialog
         open={!!pendingDelete}

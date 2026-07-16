@@ -10,3 +10,8 @@ class MomoChargeRequest(BaseModel):
 class MomoChargeResponse(BaseModel):
     reference: str
     status: str
+
+
+class OtpSubmitRequest(BaseModel):
+    reference: str
+    otp: str

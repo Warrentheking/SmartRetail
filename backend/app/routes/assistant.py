@@ -1,4 +1,3 @@
-import anthropic
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -16,11 +15,8 @@ def ask(data: AssistantQuestion, db: Session = Depends(get_db), _=Depends(get_cu
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     try:
         answer = ask_business_question(db, data.question)
-    except anthropic.AuthenticationError:
-        raise HTTPException(
-            status_code=503,
-            detail="AI assistant is not configured yet. Set ANTHROPIC_API_KEY in backend/.env.",
-        )
-    except anthropic.APIError as exc:
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
         raise HTTPException(status_code=503, detail=f"AI assistant is temporarily unavailable: {exc}")
     return {"answer": answer}

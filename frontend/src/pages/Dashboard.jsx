@@ -8,7 +8,7 @@ import StatTile from "../components/StatTile";
 import Card from "../components/Card";
 import { Badge } from "../components/Badge";
 import ConfirmDialog from "../components/ConfirmDialog";
-import LoadingScreen from "../components/LoadingScreen";
+import { SkeletonStatTile, SkeletonCard, SkeletonTable } from "../components/Skeleton";
 
 const fmt = (n) => `GHS ${Number(n).toFixed(2)}`;
 
@@ -47,10 +47,6 @@ export default function Dashboard() {
     }
   }
 
-  if (loading) {
-    return <LoadingScreen label="Loading dashboard..." />;
-  }
-
   return (
     <AppShell
       title="Dashboard"
@@ -65,6 +61,20 @@ export default function Dashboard() {
         </Link>
       }
     >
+      {loading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonStatTile key={i} />
+            ))}
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            <SkeletonCard rows={4} />
+            <SkeletonCard rows={4} />
+          </div>
+          <SkeletonTable rows={6} cols={5} />
+        </div>
+      ) : (
       <div className="space-y-6">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatTile
@@ -201,6 +211,7 @@ export default function Dashboard() {
           )}
         </Card>
       </div>
+      )}
 
       <ConfirmDialog
         open={!!pendingVoid}

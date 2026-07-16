@@ -17,7 +17,7 @@ import api from "../api/client";
 import AppShell from "../components/AppShell";
 import Card from "../components/Card";
 import StatTile from "../components/StatTile";
-import LoadingScreen from "../components/LoadingScreen";
+import { SkeletonStatTile, SkeletonChart } from "../components/Skeleton";
 import { CHART_COLORS } from "../lib/chartColors";
 
 export default function Forecasting() {
@@ -88,10 +88,6 @@ export default function Forecasting() {
     [categoryDemand]
   );
 
-  if (loading) {
-    return <LoadingScreen label="Loading forecasting..." />;
-  }
-
   return (
     <AppShell
       title="Sales Forecasting"
@@ -120,6 +116,17 @@ export default function Forecasting() {
         </div>
       }
     >
+      {loading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonStatTile key={i} />
+            ))}
+          </div>
+          <SkeletonChart height={340} />
+          <SkeletonChart />
+        </div>
+      ) : (
       <div className="space-y-6">
         {error && (
           <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>
@@ -255,6 +262,7 @@ export default function Forecasting() {
           )}
         </Card>
       </div>
+      )}
     </AppShell>
   );
 }

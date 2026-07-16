@@ -1,15 +1,16 @@
+import os
 from datetime import datetime, timedelta
 
-from anthropic import Anthropic
+from groq import Groq
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.customer import Customer
 from app.models.product import Product
 from app.models.transaction import Transaction, TransactionItem
-from app.services.inventory import estimate_days_until_stockout
+from app.services.inventory import estimate_days_until_stockout_batch
 
-MODEL = "claude-haiku-4-5"
+MODEL = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = (
     "You are SmartRetail's business assistant for a small retail shop owner in Ghana. "
@@ -23,7 +24,7 @@ SYSTEM_PROMPT = (
 def _period_stats(db: Session, start: datetime) -> dict:
     row = (
         db.query(func.count(Transaction.transaction_id), func.coalesce(func.sum(Transaction.total_amount), 0))
-        .filter(Transaction.created_at >= start)
+        .filter(Transaction.created_at >= start, Transaction.voided.is_(False))
         .first()
     )
     return {"count": row[0], "revenue": float(row[1])}
@@ -45,9 +46,12 @@ def build_business_context(db: Session) -> str:
         .order_by(Product.stock_quantity.asc())
         .all()
     )
+    stockout_estimates = estimate_days_until_stockout_batch(
+        db, [(p.product_id, p.stock_quantity) for p in low_stock]
+    )
     low_stock_lines = []
     for p in low_stock:
-        _, days_left = estimate_days_until_stockout(db, p.product_id, p.stock_quantity)
+        _, days_left = stockout_estimates[p.product_id]
         eta = f"~{days_left:.0f} days left" if days_left is not None else "stockout timing unknown"
         low_stock_lines.append(f"- {p.name}: {p.stock_quantity} units left, reorder point {p.reorder_point} ({eta})")
 
@@ -59,7 +63,7 @@ def build_business_context(db: Session) -> str:
         )
         .join(TransactionItem, Product.product_id == TransactionItem.product_id)
         .join(Transaction, TransactionItem.transaction_id == Transaction.transaction_id)
-        .filter(Transaction.created_at >= month_start)
+        .filter(Transaction.created_at >= month_start, Transaction.voided.is_(False))
         .group_by(Product.product_id, Product.name)
         .order_by(func.sum(TransactionItem.quantity).desc())
         .limit(5)
@@ -89,17 +93,20 @@ Total registered customers: {total_customers}"""
 
 
 def ask_business_question(db: Session, question: str) -> str:
-    client = Anthropic()  # reads ANTHROPIC_API_KEY from the environment
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("AI assistant is not configured yet. Set GROQ_API_KEY in backend/.env.")
+
+    client = Groq(api_key=api_key)
     context = build_business_context(db)
 
-    response = client.messages.create(
+    response = client.chat.completions.create(
         model=MODEL,
         max_tokens=512,
-        system=SYSTEM_PROMPT,
-        messages=[{
-            "role": "user",
-            "content": f"{context}\n\nOwner's question: {question}",
-        }],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"{context}\n\nOwner's question: {question}"},
+        ],
     )
 
-    return next((block.text for block in response.content if block.type == "text"), "")
+    return response.choices[0].message.content

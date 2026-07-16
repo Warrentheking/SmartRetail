@@ -11,6 +11,12 @@ class UserCreate(BaseModel):
     password: str
     role: str = "cashier"
 
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    role: Optional[str] = None
+
 class UserResponse(BaseModel):
     user_id: int
     name: str

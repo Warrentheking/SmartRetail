@@ -34,7 +34,7 @@ const PAYMENT_METHODS = [
 
 const MOMO_PROVIDERS = [
   { value: "mtn", label: "MTN Mobile Money" },
-  { value: "vod", label: "Vodafone Cash" },
+  { value: "vod", label: "Telecel Cash" },
   { value: "atl", label: "AirtelTigo Money" },
 ];
 
@@ -93,7 +93,9 @@ export default function POS() {
 
   const [momoPhone, setMomoPhone] = useState("");
   const [momoProvider, setMomoProvider] = useState("mtn");
-  const [momoStatus, setMomoStatus] = useState("idle"); // idle | initiating | waiting
+  const [momoStatus, setMomoStatus] = useState("idle"); // idle | initiating | waiting | otp | submitting_otp
+  const [momoReference, setMomoReference] = useState(null);
+  const [momoOtp, setMomoOtp] = useState("");
   const momoCancelRef = useRef(false);
 
   async function loadProducts() {
@@ -197,6 +199,11 @@ export default function POS() {
           await handleCheckout(reference);
           return;
         }
+        if (data.status === "send_otp") {
+          setMomoReference(reference);
+          setMomoStatus("otp");
+          return;
+        }
         if (data.status === "failed" || data.status === "abandoned") {
           setMomoStatus("idle");
           setError("The customer's mobile money payment was not completed. Ask them to try again, or choose a different payment method.");
@@ -225,6 +232,11 @@ export default function POS() {
         phone: momoPhone.trim(),
         provider: momoProvider,
       });
+      if (data.status === "send_otp") {
+        setMomoReference(data.reference);
+        setMomoStatus("otp");
+        return;
+      }
       setMomoStatus("waiting");
       pollMomoStatus(data.reference);
     } catch (err) {
@@ -233,9 +245,42 @@ export default function POS() {
     }
   }
 
+  async function handleMomoOtpSubmit() {
+    if (!momoOtp.trim()) {
+      setError("Enter the code the customer received.");
+      return;
+    }
+    setError("");
+    setMomoStatus("submitting_otp");
+    try {
+      const { data } = await api.post("/payments/momo/submit-otp", {
+        reference: momoReference,
+        otp: momoOtp.trim(),
+      });
+      setMomoOtp("");
+      if (data.status === "success") {
+        setMomoStatus("idle");
+        await handleCheckout(momoReference);
+        return;
+      }
+      if (data.status === "failed" || data.status === "abandoned") {
+        setMomoStatus("idle");
+        setError("The customer's mobile money payment was not completed. Ask them to try again, or choose a different payment method.");
+        return;
+      }
+      setMomoStatus("waiting");
+      pollMomoStatus(momoReference);
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not verify that code. Ask the customer to try again.");
+      setMomoStatus("otp");
+    }
+  }
+
   function cancelMomo() {
     momoCancelRef.current = true;
     setMomoStatus("idle");
+    setMomoOtp("");
+    setMomoReference(null);
   }
 
   if (loading) {
@@ -490,7 +535,35 @@ export default function POS() {
                   </div>
                 )}
 
-                {paymentMethod === "mobile_money" && momoStatus === "waiting" ? (
+                {paymentMethod === "mobile_money" && (momoStatus === "otp" || momoStatus === "submitting_otp") ? (
+                  <div className="py-2">
+                    <p className="text-sm text-gray-600 mb-2 text-center">
+                      Enter the code sent to the customer's phone
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={momoOtp}
+                      onChange={(e) => setMomoOtp(e.target.value)}
+                      disabled={momoStatus === "submitting_otp"}
+                      placeholder="OTP code"
+                      autoFocus
+                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-gray-50 mb-2"
+                    />
+                    <button
+                      onClick={handleMomoOtpSubmit}
+                      disabled={momoStatus === "submitting_otp"}
+                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition-colors text-sm shadow-card"
+                    >
+                      {momoStatus === "submitting_otp" ? "Verifying..." : "Submit code"}
+                    </button>
+                    <div className="text-center">
+                      <button onClick={cancelMomo} className="text-xs text-gray-400 hover:text-gray-600 mt-2">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : paymentMethod === "mobile_money" && momoStatus === "waiting" ? (
                   <div className="text-center py-2">
                     <Loader2 className="w-5 h-5 text-blue-600 animate-spin mx-auto mb-2" strokeWidth={2.5} />
                     <p className="text-sm text-gray-600">Waiting for the customer to approve on their phone...</p>

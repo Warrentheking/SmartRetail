@@ -19,7 +19,7 @@ import AppShell from "../components/AppShell";
 import Card from "../components/Card";
 import StatTile from "../components/StatTile";
 import { Badge } from "../components/Badge";
-import LoadingScreen from "../components/LoadingScreen";
+import { SkeletonStatTile, SkeletonCard, SkeletonChart, SkeletonTable } from "../components/Skeleton";
 
 const SCHEDULE = [
   { type: "daily", label: "Daily Summary", time: "Every day at 9:00 PM" },
@@ -73,10 +73,6 @@ export default function Reports() {
     }
   }
 
-  if (loading) {
-    return <LoadingScreen label="Loading reports..." />;
-  }
-
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const reportsThisMonth = reports.filter((r) => new Date(r.sent_at) >= monthStart).length;
@@ -85,6 +81,18 @@ export default function Reports() {
 
   return (
     <AppShell title="Automated Reports" subtitle="Daily, weekly, and monthly summaries via WhatsApp">
+      {loading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonStatTile key={i} />
+            ))}
+          </div>
+          <SkeletonCard rows={3} />
+          <SkeletonChart />
+          <SkeletonTable rows={4} cols={3} />
+        </div>
+      ) : (
       <div className="space-y-6">
         {error && (
           <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>
@@ -226,6 +234,7 @@ export default function Reports() {
           )}
         </Card>
       </div>
+      )}
     </AppShell>
   );
 }

@@ -1,7 +1,7 @@
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.schemas.payment import MomoChargeRequest, MomoChargeResponse
+from app.schemas.payment import MomoChargeRequest, MomoChargeResponse, OtpSubmitRequest
 from app.services import paystack
 from app.services.auth import get_current_user
 
@@ -19,6 +19,17 @@ def initiate(data: MomoChargeRequest, _=Depends(get_current_user)):
     except httpx.HTTPStatusError as exc:
         raise HTTPException(status_code=502, detail=f"Paystack error: {exc.response.text}")
     return {"reference": result["reference"], "status": result.get("status", "pending")}
+
+
+@router.post("/submit-otp", response_model=MomoChargeResponse)
+def submit_otp(data: OtpSubmitRequest, _=Depends(get_current_user)):
+    try:
+        result = paystack.submit_otp(data.reference, data.otp)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"Paystack error: {exc.response.text}")
+    return {"reference": data.reference, "status": result.get("status", "pending")}
 
 
 @router.get("/status/{reference}", response_model=MomoChargeResponse)

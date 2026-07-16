@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { UserPlus, Trash2, Users as UsersIcon } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { UserPlus, Trash2, Pencil, Check, X, Users as UsersIcon } from "lucide-react";
 import api from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -7,9 +7,12 @@ import AppShell from "../components/AppShell";
 import Card from "../components/Card";
 import { Badge } from "../components/Badge";
 import ConfirmDialog from "../components/ConfirmDialog";
-import LoadingScreen from "../components/LoadingScreen";
+import { Bone, SkeletonTable } from "../components/Skeleton";
 
 const emptyForm = { name: "", email: "", password: "", role: "cashier" };
+
+const inputClass =
+  "w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-shadow";
 
 export default function Settings() {
   const { user: currentUser } = useAuth();
@@ -21,6 +24,9 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleteError, setDeleteError] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   async function loadUsers() {
     const { data } = await api.get("/auth/users");
@@ -48,6 +54,29 @@ export default function Settings() {
     }
   }
 
+  function startEdit(u) {
+    setEditingId(u.user_id);
+    setEditForm({ name: u.name, email: u.email, role: u.role, password: "" });
+    setError("");
+  }
+
+  async function saveEdit(userId) {
+    setSaving(true);
+    setError("");
+    try {
+      const payload = { name: editForm.name, email: editForm.email, role: editForm.role };
+      if (editForm.password.trim()) payload.password = editForm.password.trim();
+      await api.put(`/auth/users/${userId}`, payload);
+      showToast(`${editForm.name}'s account updated`);
+      setEditingId(null);
+      await loadUsers();
+    } catch (err) {
+      setError(err.response?.data?.detail || "Could not save changes.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function confirmDelete() {
     setDeleteError("");
     const name = pendingDelete.name;
@@ -62,16 +91,25 @@ export default function Settings() {
     }
   }
 
-  if (loading) {
-    return <LoadingScreen label="Loading settings..." />;
-  }
-
   return (
     <AppShell title="Settings" subtitle="Manage staff accounts and access">
+      {loading ? (
+        <div className="space-y-6 max-w-3xl">
+          <div className="bg-white rounded-2xl border border-gray-150 shadow-card p-6">
+            <Bone className="h-4 w-32 mb-5" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Bone key={i} className="h-10" />
+              ))}
+            </div>
+          </div>
+          <SkeletonTable rows={4} cols={4} title />
+        </div>
+      ) : (
       <div className="space-y-6 max-w-3xl">
-        {deleteError && (
+        {(error || deleteError) && (
           <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">
-            {deleteError}
+            {error || deleteError}
           </div>
         )}
 
@@ -123,12 +161,6 @@ export default function Settings() {
               </select>
             </div>
 
-            {error && (
-              <div className="sm:col-span-2 bg-red-50 border border-red-100 text-red-600 text-sm px-3.5 py-2.5 rounded-xl">
-                {error}
-              </div>
-            )}
-
             <div className="sm:col-span-2">
               <button
                 type="submit"
@@ -160,35 +192,107 @@ export default function Settings() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {users.map((u) => (
-                    <tr key={u.user_id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="py-3 px-2 text-gray-900">
-                        {u.name}
-                        {u.user_id === currentUser.id && <span className="text-gray-400"> (you)</span>}
-                      </td>
-                      <td className="py-3 px-2 text-gray-500">{u.email}</td>
-                      <td className="py-3 px-2">
-                        <Badge tone={u.role === "owner" ? "violet" : "info"} className="capitalize">
-                          {u.role}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-2 text-right">
-                        <button
-                          onClick={() => setPendingDelete(u)}
-                          aria-label={`Remove ${u.name}`}
-                          className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" strokeWidth={2} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {users.map((u) =>
+                    editingId === u.user_id ? (
+                      <Fragment key={u.user_id}>
+                        <tr className="bg-blue-50/40">
+                          <td className="py-2 px-2">
+                            <input
+                              value={editForm.name}
+                              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                              className={inputClass}
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <input
+                              type="email"
+                              value={editForm.email}
+                              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                              className={inputClass}
+                            />
+                          </td>
+                          <td className="py-2 px-2">
+                            <select
+                              value={editForm.role}
+                              onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                              className={inputClass}
+                            >
+                              <option value="cashier">Cashier</option>
+                              <option value="owner">Owner</option>
+                            </select>
+                          </td>
+                          <td className="py-2 px-2">
+                            <div className="flex items-center gap-1 justify-end">
+                              <button
+                                onClick={() => saveEdit(u.user_id)}
+                                disabled={saving}
+                                aria-label="Save changes"
+                                className="p-1.5 text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                              >
+                                <Check className="w-4 h-4" strokeWidth={2} />
+                              </button>
+                              <button
+                                onClick={() => setEditingId(null)}
+                                aria-label="Cancel editing"
+                                className="p-1.5 text-gray-400 hover:bg-gray-100 rounded-md transition-colors"
+                              >
+                                <X className="w-4 h-4" strokeWidth={2} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        <tr className="bg-blue-50/40">
+                          <td colSpan={4} className="px-2 pb-3">
+                            <input
+                              type="text"
+                              value={editForm.password}
+                              onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                              placeholder="New password (leave blank to keep current)"
+                              className={inputClass}
+                            />
+                          </td>
+                        </tr>
+                      </Fragment>
+                    ) : (
+                      <tr key={u.user_id} className="hover:bg-gray-50/60 transition-colors">
+                        <td className="py-3 px-2 text-gray-900">
+                          {u.name}
+                          {u.user_id === currentUser.id && <span className="text-gray-400"> (you)</span>}
+                        </td>
+                        <td className="py-3 px-2 text-gray-500">{u.email}</td>
+                        <td className="py-3 px-2">
+                          <Badge tone={u.role === "owner" ? "violet" : "info"} className="capitalize">
+                            {u.role}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-2">
+                          <div className="flex items-center gap-1 justify-end">
+                            <button
+                              onClick={() => startEdit(u)}
+                              aria-label={`Edit ${u.name}`}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                            >
+                              <Pencil className="w-4 h-4" strokeWidth={2} />
+                            </button>
+                            <button
+                              onClick={() => setPendingDelete(u)}
+                              aria-label={`Remove ${u.name}`}
+                              className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" strokeWidth={2} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  )}
                 </tbody>
               </table>
             </div>
           )}
         </Card>
       </div>
+      )}
 
       <ConfirmDialog
         open={!!pendingDelete}

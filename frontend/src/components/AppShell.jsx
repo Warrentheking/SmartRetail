@@ -28,9 +28,8 @@ const NAV_ITEMS = [
   { to: "/settings", label: "Settings", icon: SettingsIcon, ownerOnly: true },
 ];
 
-function SidebarContent({ pathname, onNavigate }) {
-  const { user, logout } = useAuth();
-  const [confirmingLogout, setConfirmingLogout] = useState(false);
+function SidebarContent({ pathname, onNavigate, onSignOutClick }) {
+  const { user } = useAuth();
   const navItems = NAV_ITEMS.filter((item) => !item.ownerOnly || user.role === "owner");
 
   return (
@@ -76,7 +75,7 @@ function SidebarContent({ pathname, onNavigate }) {
             <p className="text-[11px] text-gray-500 capitalize">{user.role}</p>
           </div>
           <button
-            onClick={() => setConfirmingLogout(true)}
+            onClick={onSignOutClick}
             aria-label="Sign out"
             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors shrink-0"
           >
@@ -84,22 +83,15 @@ function SidebarContent({ pathname, onNavigate }) {
           </button>
         </div>
       </div>
-
-      <ConfirmDialog
-        open={confirmingLogout}
-        title="Sign out of SmartRetail?"
-        description="You'll need to sign in again to continue."
-        confirmLabel="Sign out"
-        onConfirm={logout}
-        onCancel={() => setConfirmingLogout(false)}
-      />
     </div>
   );
 }
 
 export default function AppShell({ title, subtitle, actions, children }) {
   const { pathname } = useLocation();
+  const { logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -114,7 +106,7 @@ export default function AppShell({ title, subtitle, actions, children }) {
     <div className="min-h-screen bg-gray-50 flex">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-60 md:flex-col md:fixed md:inset-y-0 bg-white border-r border-gray-150">
-        <SidebarContent pathname={pathname} />
+        <SidebarContent pathname={pathname} onSignOutClick={() => setConfirmingLogout(true)} />
       </aside>
 
       {/* Mobile sidebar overlay */}
@@ -122,7 +114,11 @@ export default function AppShell({ title, subtitle, actions, children }) {
         <div className="md:hidden fixed inset-0 z-40 flex">
           <div className="fixed inset-0 bg-black/30" onClick={() => setMobileOpen(false)} />
           <aside className="relative w-64 bg-white border-r border-gray-150 z-50">
-            <SidebarContent pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+            <SidebarContent
+              pathname={pathname}
+              onNavigate={() => setMobileOpen(false)}
+              onSignOutClick={() => setConfirmingLogout(true)}
+            />
           </aside>
         </div>
       )}
@@ -159,6 +155,15 @@ export default function AppShell({ title, subtitle, actions, children }) {
           <X className="w-5 h-5 text-gray-700" />
         </button>
       )}
+
+      <ConfirmDialog
+        open={confirmingLogout}
+        title="Sign out of SmartRetail?"
+        description="You'll need to sign in again to continue."
+        confirmLabel="Sign out"
+        onConfirm={logout}
+        onCancel={() => setConfirmingLogout(false)}
+      />
     </div>
   );
 }

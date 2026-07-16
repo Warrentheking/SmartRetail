@@ -17,7 +17,7 @@ import AppShell from "../components/AppShell";
 import Card from "../components/Card";
 import StatTile from "../components/StatTile";
 import { SegmentBadge } from "../components/Badge";
-import LoadingScreen from "../components/LoadingScreen";
+import { SkeletonStatTile, SkeletonCard, SkeletonTable } from "../components/Skeleton";
 
 const SEGMENT_COLORS = {
   Champion: "#0ca30c",
@@ -56,12 +56,8 @@ export default function CustomerAnalytics() {
     }
   }
 
-  if (loading) {
-    return <LoadingScreen label="Loading customer analytics..." />;
-  }
-
-  const totalSegmented = data.customers.length;
-  const atRiskCount = data.summary.find((s) => s.segment_label === "At Risk")?.customer_count || 0;
+  const totalSegmented = data?.customers.length || 0;
+  const atRiskCount = data?.summary.find((s) => s.segment_label === "At Risk")?.customer_count || 0;
 
   return (
     <AppShell
@@ -78,6 +74,20 @@ export default function CustomerAnalytics() {
         </button>
       }
     >
+      {loading ? (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonStatTile key={i} />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SkeletonCard rows={4} />
+            <SkeletonCard rows={4} />
+          </div>
+          <SkeletonTable rows={5} cols={6} />
+        </div>
+      ) : (
       <div className="space-y-6">
         {error && (
           <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-3 rounded-xl">{error}</div>
@@ -215,6 +225,7 @@ export default function CustomerAnalytics() {
           )}
         </Card>
       </div>
+      )}
     </AppShell>
   );
 }
