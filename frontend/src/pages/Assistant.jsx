@@ -45,7 +45,7 @@ export default function Assistant() {
   }
 
   return (
-    <AppShell title="Ask AI" subtitle="Plain-English answers about your business, powered by Llama">
+    <AppShell title="Ask AI" subtitle="Plain-English answers about your business, powered by Gemini">
       <div className="flex flex-col h-[calc(100vh-140px)] max-w-3xl mx-auto">
         {messages.length === 0 && (
           <div className="shrink-0 mb-4">

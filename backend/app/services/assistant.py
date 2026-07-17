@@ -1,7 +1,8 @@
 import os
 from datetime import datetime, timedelta
 
-from groq import Groq
+from google import genai
+from google.genai import types
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -10,7 +11,7 @@ from app.models.product import Product
 from app.models.transaction import Transaction, TransactionItem
 from app.services.inventory import estimate_days_until_stockout_batch
 
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "models/gemini-flash-latest"
 
 SYSTEM_PROMPT = (
     "You are SmartRetail's business assistant for a small retail shop owner in Ghana. "
@@ -93,20 +94,17 @@ Total registered customers: {total_customers}"""
 
 
 def ask_business_question(db: Session, question: str) -> str:
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("AI assistant is not configured yet. Set GROQ_API_KEY in backend/.env.")
+        raise RuntimeError("AI assistant is not configured yet. Set GEMINI_API_KEY in backend/.env.")
 
-    client = Groq(api_key=api_key)
+    client = genai.Client(api_key=api_key)
     context = build_business_context(db)
 
-    response = client.chat.completions.create(
+    response = client.models.generate_content(
         model=MODEL,
-        max_tokens=512,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"{context}\n\nOwner's question: {question}"},
-        ],
+        contents=f"{context}\n\nOwner's question: {question}",
+        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
     )
 
-    return response.choices[0].message.content
+    return response.text
