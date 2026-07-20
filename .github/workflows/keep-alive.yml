@@ -1,0 +1,15 @@
+name: Keep backend alive
+
+on:
+  schedule:
+    # Every 10 minutes - comfortably under Render free tier's 15-minute
+    # sleep-after-inactivity threshold, with margin for GitHub's scheduling delay.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: curl -sf --max-time 90 https://smartretail-backend.onrender.com/health
