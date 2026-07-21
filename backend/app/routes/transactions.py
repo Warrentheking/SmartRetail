@@ -46,25 +46,27 @@ def create_sale(
     for item in cart:
         total += Decimal(str(item["product"].price)) * item["quantity"]
 
-    # Mobile money sales must be verified server-side against Paystack before
-    # the sale is recorded - never trust the frontend's claim that it succeeded.
-    if data.payment_method == "mobile_money":
+    # Mobile money and card sales must be verified server-side against
+    # Paystack before the sale is recorded - never trust the frontend's
+    # claim that a payment succeeded.
+    if data.payment_method in ("mobile_money", "card"):
+        method_label = "Mobile money" if data.payment_method == "mobile_money" else "Card"
         if not data.payment_reference:
-            raise HTTPException(status_code=400, detail="payment_reference is required for mobile money sales")
+            raise HTTPException(status_code=400, detail=f"payment_reference is required for {data.payment_method} sales")
         try:
             verified = paystack.verify_transaction(data.payment_reference)
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc))
         except httpx.HTTPStatusError as exc:
-            raise HTTPException(status_code=502, detail=f"Could not verify mobile money payment: {exc.response.text}")
+            raise HTTPException(status_code=502, detail=f"Could not verify {data.payment_method} payment: {exc.response.text}")
         if verified["status"] != "success":
             raise HTTPException(
                 status_code=400,
-                detail=f"Mobile money payment has not succeeded yet (status: {verified['status']})",
+                detail=f"{method_label} payment has not succeeded yet (status: {verified['status']})",
             )
         expected_pesewas = int(round(total * 100))
         if verified.get("amount") != expected_pesewas:
-            raise HTTPException(status_code=400, detail="Mobile money payment amount does not match the sale total")
+            raise HTTPException(status_code=400, detail=f"{method_label} payment amount does not match the sale total")
 
     # Create transaction header
     transaction = Transaction(

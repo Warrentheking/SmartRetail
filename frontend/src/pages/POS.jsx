@@ -218,6 +218,30 @@ export default function POS() {
     setError("Payment confirmation timed out. Ask the customer to check their phone, or try again.");
   }
 
+  function handleCardPayment() {
+    if (cart.length === 0) return;
+    const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+    if (!publicKey || !window.PaystackPop) {
+      setError("Card payments aren't configured yet.");
+      return;
+    }
+    setError("");
+    setSubmitting(true);
+    const handler = window.PaystackPop.setup({
+      key: publicKey,
+      email: `card-${Date.now()}@example.com`,
+      amount: Math.round(total * 100),
+      currency: "GHS",
+      callback: (response) => {
+        handleCheckout(response.reference);
+      },
+      onClose: () => {
+        setSubmitting(false);
+      },
+    });
+    handler.openIframe();
+  }
+
   async function handleMomoInitiate() {
     if (!momoPhone.trim()) {
       setError("Enter the customer's mobile money number.");
@@ -573,7 +597,13 @@ export default function POS() {
                   </div>
                 ) : (
                   <button
-                    onClick={() => (paymentMethod === "mobile_money" ? handleMomoInitiate() : handleCheckout())}
+                    onClick={() =>
+                      paymentMethod === "mobile_money"
+                        ? handleMomoInitiate()
+                        : paymentMethod === "card"
+                        ? handleCardPayment()
+                        : handleCheckout()
+                    }
                     disabled={cart.length === 0 || submitting || momoStatus === "initiating"}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-colors text-sm shadow-card"
                   >
@@ -583,6 +613,8 @@ export default function POS() {
                       ? "Request Payment"
                       : submitting
                       ? "Processing..."
+                      : paymentMethod === "card"
+                      ? "Pay with card"
                       : "Process Payment"}
                   </button>
                 )}
