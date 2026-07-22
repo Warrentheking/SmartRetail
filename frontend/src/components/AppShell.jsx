@@ -34,7 +34,10 @@ function SidebarContent({ pathname, onNavigate, onSignOutClick }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2.5 px-5 py-5">
+      <div
+        className="flex items-center gap-2.5 px-5 pb-5"
+        style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top))" }}
+      >
         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
           <ShoppingBag className="w-4.5 h-4.5 text-white" strokeWidth={2.25} />
         </div>
@@ -124,7 +127,10 @@ export default function AppShell({ title, subtitle, actions, children }) {
       )}
 
       <div className="flex-1 md:pl-60 flex flex-col min-w-0">
-        <header className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-gray-150 px-4 md:px-8 py-4 flex items-center justify-between gap-4">
+        <header
+          className="sticky top-0 z-30 bg-white/85 backdrop-blur border-b border-gray-150 px-4 md:px-8 pb-4 flex items-center justify-between gap-4"
+          style={{ paddingTop: "max(1rem, env(safe-area-inset-top))" }}
+        >
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobileOpen(true)}
@@ -148,7 +154,8 @@ export default function AppShell({ title, subtitle, actions, children }) {
 
       {mobileOpen && (
         <button
-          className="md:hidden fixed top-4 right-4 z-50 p-2 bg-white rounded-full shadow-popover"
+          className="md:hidden fixed right-4 z-50 p-2 bg-white rounded-full shadow-popover"
+          style={{ top: "max(1rem, env(safe-area-inset-top))" }}
           onClick={() => setMobileOpen(false)}
           aria-label="Close menu"
         >

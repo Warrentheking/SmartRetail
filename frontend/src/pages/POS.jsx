@@ -571,7 +571,10 @@ export default function POS() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 print:h-auto print:bg-white animate-[fadeInUp_220ms_ease-out]">
-      <header className="bg-white border-b border-gray-150 px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between shrink-0 print:hidden">
+      <header
+        className="bg-white border-b border-gray-150 px-4 sm:px-6 pb-3 sm:pb-3.5 flex items-center justify-between shrink-0 print:hidden"
+        style={{ paddingTop: "max(0.875rem, env(safe-area-inset-top))" }}
+      >
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
             <ShoppingBag className="w-4.5 h-4.5 text-white" strokeWidth={2.25} />
