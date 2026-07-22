@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pandas as pd
-from prophet import Prophet
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -35,6 +34,12 @@ def generate_sales_forecast(db: Session, product_id: int, horizon_days: int = FO
     forecast into sales_forecasts, matching Algorithm 3 in the methodology
     doc. Returns the number of forecast rows written.
     """
+    # Imported lazily rather than at module level - Prophet pulls in matplotlib,
+    # whose first-ever font cache build can take upwards of a minute on a fresh
+    # container. Importing it only when a forecast is actually requested keeps
+    # app startup (and therefore login, health checks, etc.) fast regardless.
+    from prophet import Prophet
+
     product = db.query(Product).filter(Product.product_id == product_id).first()
     if not product:
         raise ValueError("Product not found")
