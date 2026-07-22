@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ShoppingBag,
+  ShoppingCart,
   LayoutDashboard,
   LogOut,
   Search,
@@ -97,6 +98,21 @@ export default function POS() {
   const [momoReference, setMomoReference] = useState(null);
   const [momoOtp, setMomoOtp] = useState("");
   const momoCancelRef = useRef(false);
+
+  // Mobile only: the cart/payment panel lives in a slide-up sheet on small
+  // screens since there's no room for a permanent side panel like on desktop.
+  const [showCartSheet, setShowCartSheet] = useState(false);
+
+  useEffect(() => {
+    if (receipt) setShowCartSheet(true);
+  }, [receipt]);
+
+  useEffect(() => {
+    document.body.style.overflow = showCartSheet ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showCartSheet]);
 
   async function loadProducts() {
     const res = await api.get("/products/");
@@ -311,31 +327,276 @@ export default function POS() {
     return <LoadingScreen label="Loading POS..." />;
   }
 
+  // Shared between the desktop side panel and the mobile slide-up sheet -
+  // same markup, same state, just mounted in two different containers.
+  const saleContent = receipt ? (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto">
+        <div className="text-center py-4">
+          <div className="w-12 h-12 bg-green-50 text-status-good rounded-full flex items-center justify-center mx-auto mb-3">
+            <CheckCircle2 className="w-7 h-7" strokeWidth={2} />
+          </div>
+          <h3 className="font-semibold text-gray-900">Sale completed</h3>
+          <p className="text-xs text-gray-400 mt-1">
+            Transaction #{receipt.transaction_id} · {new Date(receipt.created_at).toLocaleString()}
+          </p>
+        </div>
+        <div className="border-t border-gray-100 divide-y divide-gray-50 mt-2">
+          {receipt.items.map((it) => (
+            <div key={it.item_id} className="flex justify-between py-2.5 text-sm">
+              <span className="text-gray-600">
+                {productNameById(it.product_id)} × {it.quantity}
+              </span>
+              <span className="text-gray-900 font-medium">
+                {fmt(it.subtotal ?? it.unit_price * it.quantity)}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between pt-3 mt-2 border-t border-gray-200">
+          <span className="font-semibold text-gray-900">Total</span>
+          <span className="font-bold text-gray-900">{fmt(receipt.total_amount)}</span>
+        </div>
+        <p className="text-xs text-gray-400 mt-2 capitalize">
+          Paid via {receipt.payment_method.replace("_", " ")}
+          {receipt.payment_reference && ` · Ref: ${receipt.payment_reference}`}
+        </p>
+      </div>
+      <div className="mt-4 flex gap-2 shrink-0">
+        <button
+          onClick={() => window.print()}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-2.5 rounded-xl text-sm transition-colors"
+        >
+          <Printer className="w-4 h-4" strokeWidth={2} />
+          Print Receipt
+        </button>
+        <button
+          onClick={() => {
+            setReceipt(null);
+            setShowCartSheet(false);
+          }}
+          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm transition-colors shadow-card"
+        >
+          New Sale
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div className="flex flex-col h-full">
+      <div className="relative mb-4 shrink-0">
+        <User className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" strokeWidth={2} />
+        <select
+          value={customerId}
+          onChange={(e) => setCustomerId(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 appearance-none bg-white"
+        >
+          <option value="">Walk-in customer</option>
+          {customers.map((c) => (
+            <option key={c.customer_id} value={c.customer_id}>
+              {c.name}
+              {c.phone_number ? ` — ${c.phone_number}` : ""}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {cart.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center mt-8">
+            No items added yet. Tap a product to add it.
+          </p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {cart.map((item) => (
+              <div key={item.product.product_id} className="flex items-center gap-2 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{item.product.name}</p>
+                  <p className="text-xs text-gray-400">{fmt(item.product.price)} each</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => updateQty(item.product.product_id, -1)}
+                    aria-label={`Decrease quantity of ${item.product.name}`}
+                    className="w-7 h-7 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 flex items-center justify-center"
+                  >
+                    <Minus className="w-3 h-3" strokeWidth={2.5} />
+                  </button>
+                  <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
+                  <button
+                    onClick={() => updateQty(item.product.product_id, 1)}
+                    disabled={item.quantity >= item.product.stock_quantity}
+                    aria-label={`Increase quantity of ${item.product.name}`}
+                    className="w-7 h-7 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-30 flex items-center justify-center"
+                  >
+                    <Plus className="w-3 h-3" strokeWidth={2.5} />
+                  </button>
+                </div>
+                <p className="w-20 text-right text-sm font-medium text-gray-900 shrink-0">
+                  {fmt(item.quantity * item.product.price)}
+                </p>
+                <button
+                  onClick={() => removeItem(item.product.product_id)}
+                  className="text-gray-300 hover:text-red-500 shrink-0"
+                  aria-label="Remove item"
+                >
+                  <X className="w-4 h-4" strokeWidth={2} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 pt-4 border-t border-gray-150 mt-2">
+        <div className="flex justify-between mb-4">
+          <span className="font-semibold text-gray-900">Total</span>
+          <span className="font-bold text-lg text-gray-900">{fmt(total)}</span>
+        </div>
+
+        <div className="flex gap-2 mb-4">
+          {PAYMENT_METHODS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              disabled={momoStatus !== "idle"}
+              onClick={() => {
+                setPaymentMethod(opt.value);
+                setError("");
+              }}
+              className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                paymentMethod === opt.value
+                  ? "bg-blue-600 border-blue-600 text-white"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <opt.icon className="w-4 h-4" strokeWidth={2} />
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {paymentMethod === "mobile_money" && (
+          <div className="space-y-2 mb-4">
+            <input
+              type="tel"
+              value={momoPhone}
+              onChange={(e) => setMomoPhone(e.target.value)}
+              disabled={momoStatus !== "idle"}
+              placeholder="Customer's MoMo number, e.g. 0551234567"
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-gray-50"
+            />
+            <select
+              value={momoProvider}
+              onChange={(e) => setMomoProvider(e.target.value)}
+              disabled={momoStatus !== "idle"}
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-gray-50 bg-white"
+            >
+              {MOMO_PROVIDERS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-2.5 rounded-xl mb-4">
+            {error}
+          </div>
+        )}
+
+        {paymentMethod === "mobile_money" && (momoStatus === "otp" || momoStatus === "submitting_otp") ? (
+          <div className="py-2">
+            <p className="text-sm text-gray-600 mb-2 text-center">
+              Enter the code sent to the customer's phone
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={momoOtp}
+              onChange={(e) => setMomoOtp(e.target.value)}
+              disabled={momoStatus === "submitting_otp"}
+              placeholder="OTP code"
+              autoFocus
+              className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-gray-50 mb-2"
+            />
+            <button
+              onClick={handleMomoOtpSubmit}
+              disabled={momoStatus === "submitting_otp"}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition-colors text-sm shadow-card"
+            >
+              {momoStatus === "submitting_otp" ? "Verifying..." : "Submit code"}
+            </button>
+            <div className="text-center">
+              <button onClick={cancelMomo} className="text-xs text-gray-400 hover:text-gray-600 mt-2">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : paymentMethod === "mobile_money" && momoStatus === "waiting" ? (
+          <div className="text-center py-2">
+            <Loader2 className="w-5 h-5 text-blue-600 animate-spin mx-auto mb-2" strokeWidth={2.5} />
+            <p className="text-sm text-gray-600">Waiting for the customer to approve on their phone...</p>
+            <button onClick={cancelMomo} className="text-xs text-gray-400 hover:text-gray-600 mt-2">
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() =>
+              paymentMethod === "mobile_money"
+                ? handleMomoInitiate()
+                : paymentMethod === "card"
+                ? handleCardPayment()
+                : handleCheckout()
+            }
+            disabled={cart.length === 0 || submitting || momoStatus === "initiating"}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-colors text-sm shadow-card"
+          >
+            {momoStatus === "initiating"
+              ? "Sending request..."
+              : paymentMethod === "mobile_money"
+              ? "Request Payment"
+              : submitting
+              ? "Processing..."
+              : paymentMethod === "card"
+              ? "Pay with card"
+              : "Process Payment"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 print:h-auto print:bg-white animate-[fadeInUp_220ms_ease-out]">
-      <header className="bg-white border-b border-gray-150 px-6 py-3.5 flex items-center justify-between shrink-0 print:hidden">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+      <header className="bg-white border-b border-gray-150 px-4 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between shrink-0 print:hidden">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
             <ShoppingBag className="w-4.5 h-4.5 text-white" strokeWidth={2.25} />
           </div>
-          <span className="font-semibold text-gray-900">SmartRetail</span>
-          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full font-medium">Point of Sale</span>
+          <span className="font-semibold text-gray-900 truncate">SmartRetail</span>
+          <span className="hidden sm:inline-block text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full font-medium shrink-0">
+            Point of Sale
+          </span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           {user.role === "owner" && (
             <Link
               to="/dashboard"
+              aria-label="Dashboard"
               className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-blue-600 font-medium transition-colors"
             >
               <LayoutDashboard className="w-4 h-4" strokeWidth={2} />
-              Dashboard
+              <span className="hidden sm:inline">Dashboard</span>
             </Link>
           )}
-          <div className="flex items-center gap-2 pl-4 border-l border-gray-150">
-            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold">
+          <div className="flex items-center gap-2 pl-2 sm:pl-4 border-l border-gray-150">
+            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold shrink-0">
               {user.name?.[0]?.toUpperCase() || "?"}
             </div>
-            <span className="text-sm text-gray-600">{user.name}</span>
+            <span className="hidden sm:inline text-sm text-gray-600">{user.name}</span>
             <button
               onClick={() => setConfirmingLogout(true)}
               aria-label="Sign out"
@@ -349,7 +610,7 @@ export default function POS() {
 
       <main className="flex-1 flex overflow-hidden print:hidden">
         {/* Left panel: search + product grid (~60%) */}
-        <section className="w-full md:w-[60%] flex flex-col p-6 overflow-hidden">
+        <section className="w-full md:w-[60%] flex flex-col p-4 sm:p-6 overflow-hidden">
           <div className="relative mb-4 shrink-0">
             <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" strokeWidth={2} />
             <input
@@ -367,7 +628,7 @@ export default function POS() {
                 <p className="text-sm">No products match your search.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 pb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 pb-24 md:pb-4">
                 {filteredProducts.map((product) => (
                   <ProductCard
                     key={product.product_id}
@@ -381,248 +642,64 @@ export default function POS() {
           </div>
         </section>
 
-        {/* Right panel: receipt (~40%) */}
+        {/* Right panel: receipt (~40%), desktop/tablet only - mobile uses the slide-up sheet below */}
         <aside className="hidden md:flex md:w-[40%] bg-white border-l border-gray-150 flex-col p-6">
-          {receipt ? (
-            <div className="flex flex-col h-full">
-              <div className="flex-1 overflow-y-auto">
-                <div className="text-center py-4">
-                  <div className="w-12 h-12 bg-green-50 text-status-good rounded-full flex items-center justify-center mx-auto mb-3">
-                    <CheckCircle2 className="w-7 h-7" strokeWidth={2} />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Sale completed</h3>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Transaction #{receipt.transaction_id} · {new Date(receipt.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <div className="border-t border-gray-100 divide-y divide-gray-50 mt-2">
-                  {receipt.items.map((it) => (
-                    <div key={it.item_id} className="flex justify-between py-2.5 text-sm">
-                      <span className="text-gray-600">
-                        {productNameById(it.product_id)} × {it.quantity}
-                      </span>
-                      <span className="text-gray-900 font-medium">
-                        {fmt(it.subtotal ?? it.unit_price * it.quantity)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between pt-3 mt-2 border-t border-gray-200">
-                  <span className="font-semibold text-gray-900">Total</span>
-                  <span className="font-bold text-gray-900">{fmt(receipt.total_amount)}</span>
-                </div>
-                <p className="text-xs text-gray-400 mt-2 capitalize">
-                  Paid via {receipt.payment_method.replace("_", " ")}
-                  {receipt.payment_reference && ` · Ref: ${receipt.payment_reference}`}
-                </p>
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-2.5 rounded-xl text-sm transition-colors"
-                >
-                  <Printer className="w-4 h-4" strokeWidth={2} />
-                  Print Receipt
-                </button>
-                <button
-                  onClick={() => setReceipt(null)}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-xl text-sm transition-colors shadow-card"
-                >
-                  New Sale
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col h-full">
-              <h3 className="font-semibold text-gray-900 mb-4">Current Sale</h3>
-
-              <div className="relative mb-4 shrink-0">
-                <User className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" strokeWidth={2} />
-                <select
-                  value={customerId}
-                  onChange={(e) => setCustomerId(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 appearance-none bg-white"
-                >
-                  <option value="">Walk-in customer</option>
-                  {customers.map((c) => (
-                    <option key={c.customer_id} value={c.customer_id}>
-                      {c.name}
-                      {c.phone_number ? ` — ${c.phone_number}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex-1 overflow-y-auto">
-                {cart.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center mt-8">
-                    No items added yet. Tap a product to add it.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-gray-50">
-                    {cart.map((item) => (
-                      <div key={item.product.product_id} className="flex items-center gap-2 py-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{item.product.name}</p>
-                          <p className="text-xs text-gray-400">{fmt(item.product.price)} each</p>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => updateQty(item.product.product_id, -1)}
-                            aria-label={`Decrease quantity of ${item.product.name}`}
-                            className="w-6 h-6 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 flex items-center justify-center"
-                          >
-                            <Minus className="w-3 h-3" strokeWidth={2.5} />
-                          </button>
-                          <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
-                          <button
-                            onClick={() => updateQty(item.product.product_id, 1)}
-                            disabled={item.quantity >= item.product.stock_quantity}
-                            aria-label={`Increase quantity of ${item.product.name}`}
-                            className="w-6 h-6 rounded-full border border-gray-200 text-gray-500 hover:bg-gray-100 disabled:opacity-30 flex items-center justify-center"
-                          >
-                            <Plus className="w-3 h-3" strokeWidth={2.5} />
-                          </button>
-                        </div>
-                        <p className="w-20 text-right text-sm font-medium text-gray-900 shrink-0">
-                          {fmt(item.quantity * item.product.price)}
-                        </p>
-                        <button
-                          onClick={() => removeItem(item.product.product_id)}
-                          className="text-gray-300 hover:text-red-500 shrink-0"
-                          aria-label="Remove item"
-                        >
-                          <X className="w-4 h-4" strokeWidth={2} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="shrink-0 pt-4 border-t border-gray-150 mt-2">
-                <div className="flex justify-between mb-4">
-                  <span className="font-semibold text-gray-900">Total</span>
-                  <span className="font-bold text-lg text-gray-900">{fmt(total)}</span>
-                </div>
-
-                <div className="flex gap-2 mb-4">
-                  {PAYMENT_METHODS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      disabled={momoStatus !== "idle"}
-                      onClick={() => {
-                        setPaymentMethod(opt.value);
-                        setError("");
-                      }}
-                      className={`flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl text-xs font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                        paymentMethod === opt.value
-                          ? "bg-blue-600 border-blue-600 text-white"
-                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                      }`}
-                    >
-                      <opt.icon className="w-4 h-4" strokeWidth={2} />
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-
-                {paymentMethod === "mobile_money" && (
-                  <div className="space-y-2 mb-4">
-                    <input
-                      type="tel"
-                      value={momoPhone}
-                      onChange={(e) => setMomoPhone(e.target.value)}
-                      disabled={momoStatus !== "idle"}
-                      placeholder="Customer's MoMo number, e.g. 0551234567"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-gray-50"
-                    />
-                    <select
-                      value={momoProvider}
-                      onChange={(e) => setMomoProvider(e.target.value)}
-                      disabled={momoStatus !== "idle"}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-gray-50 bg-white"
-                    >
-                      {MOMO_PROVIDERS.map((p) => (
-                        <option key={p.value} value={p.value}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {error && (
-                  <div className="bg-red-50 border border-red-100 text-red-600 text-sm px-4 py-2.5 rounded-xl mb-4">
-                    {error}
-                  </div>
-                )}
-
-                {paymentMethod === "mobile_money" && (momoStatus === "otp" || momoStatus === "submitting_otp") ? (
-                  <div className="py-2">
-                    <p className="text-sm text-gray-600 mb-2 text-center">
-                      Enter the code sent to the customer's phone
-                    </p>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={momoOtp}
-                      onChange={(e) => setMomoOtp(e.target.value)}
-                      disabled={momoStatus === "submitting_otp"}
-                      placeholder="OTP code"
-                      autoFocus
-                      className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 disabled:bg-gray-50 mb-2"
-                    />
-                    <button
-                      onClick={handleMomoOtpSubmit}
-                      disabled={momoStatus === "submitting_otp"}
-                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium py-2.5 rounded-xl transition-colors text-sm shadow-card"
-                    >
-                      {momoStatus === "submitting_otp" ? "Verifying..." : "Submit code"}
-                    </button>
-                    <div className="text-center">
-                      <button onClick={cancelMomo} className="text-xs text-gray-400 hover:text-gray-600 mt-2">
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : paymentMethod === "mobile_money" && momoStatus === "waiting" ? (
-                  <div className="text-center py-2">
-                    <Loader2 className="w-5 h-5 text-blue-600 animate-spin mx-auto mb-2" strokeWidth={2.5} />
-                    <p className="text-sm text-gray-600">Waiting for the customer to approve on their phone...</p>
-                    <button onClick={cancelMomo} className="text-xs text-gray-400 hover:text-gray-600 mt-2">
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() =>
-                      paymentMethod === "mobile_money"
-                        ? handleMomoInitiate()
-                        : paymentMethod === "card"
-                        ? handleCardPayment()
-                        : handleCheckout()
-                    }
-                    disabled={cart.length === 0 || submitting || momoStatus === "initiating"}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-3 rounded-xl transition-colors text-sm shadow-card"
-                  >
-                    {momoStatus === "initiating"
-                      ? "Sending request..."
-                      : paymentMethod === "mobile_money"
-                      ? "Request Payment"
-                      : submitting
-                      ? "Processing..."
-                      : paymentMethod === "card"
-                      ? "Pay with card"
-                      : "Process Payment"}
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
+          {!receipt && <h3 className="font-semibold text-gray-900 mb-4">Current Sale</h3>}
+          {saleContent}
         </aside>
       </main>
+
+      {/* Mobile: sticky bar surfaces the cart total and opens the sheet below */}
+      {!showCartSheet && cart.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowCartSheet(true)}
+          style={{ paddingBottom: "max(0.875rem, env(safe-area-inset-bottom))" }}
+          className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-blue-600 hover:bg-blue-700 text-white px-5 pt-3.5 flex items-center justify-between shadow-[0_-4px_20px_rgba(0,0,0,0.18)] print:hidden transition-colors"
+        >
+          <span className="flex items-center gap-2.5 text-sm font-medium">
+            <span className="relative shrink-0">
+              <ShoppingCart className="w-5 h-5" strokeWidth={2} />
+              <span className="absolute -top-2 -right-2 bg-white text-blue-700 text-[10px] font-bold w-4.5 h-4.5 rounded-full flex items-center justify-center">
+                {cart.reduce((n, i) => n + i.quantity, 0)}
+              </span>
+            </span>
+            View cart
+          </span>
+          <span className="font-semibold">{fmt(total)}</span>
+        </button>
+      )}
+
+      {/* Mobile: slide-up sheet holds the same cart/payment panel as the desktop sidebar */}
+      {showCartSheet && (
+        <div className="md:hidden fixed inset-0 z-40 flex flex-col justify-end print:hidden">
+          <button
+            type="button"
+            aria-label="Close cart"
+            onClick={() => setShowCartSheet(false)}
+            className="absolute inset-0 bg-black/40 animate-[fadeIn_180ms_ease-out]"
+          />
+          <div className="relative bg-white rounded-t-3xl max-h-[88vh] flex flex-col shadow-2xl animate-[slideUp_240ms_cubic-bezier(0.16,1,0.3,1)]">
+            <div className="shrink-0 relative flex items-center justify-between px-5 pt-4 pb-3 border-b border-gray-100">
+              <div className="absolute left-1/2 -translate-x-1/2 top-2 w-9 h-1 rounded-full bg-gray-200" />
+              <h3 className="font-semibold text-gray-900">{receipt ? "Receipt" : "Current Sale"}</h3>
+              <button
+                onClick={() => setShowCartSheet(false)}
+                aria-label="Close cart"
+                className="p-1.5 -mr-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                <X className="w-5 h-5" strokeWidth={2} />
+              </button>
+            </div>
+            <div
+              className="flex-1 min-h-0 px-5 pt-4"
+              style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+            >
+              {saleContent}
+            </div>
+          </div>
+        </div>
+      )}
 
       {receipt && (
         <div className="hidden print:block max-w-xs mx-auto py-6 font-mono text-black">
